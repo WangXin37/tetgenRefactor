@@ -2,7 +2,7 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
-
+#include <assert.h>
 
 //**********************************************
 //Point in 2d
@@ -233,6 +233,20 @@ public:
 #define Log_Warn(...) SPDLOG_LOGGER_WARN(Logger::GetInstance().GetLoggerPtr(),__VA_ARGS__);
 #define Log_Error(...) SPDLOG_LOGGER_ERROR(Logger::GetInstance().GetLoggerPtr(),__VA_ARGS__);
 #define Log_Trace(...) SPDLOG_LOGGER_TRACE(Logger::GetInstance().GetLoggerPtr(),__VA_ARGS__);
+
+#define TETMESH_EXIT(...)   \
+{                           \
+    Log_Error(__VA_ARGS__); \
+    assert(0);              \
+    exit(EXIT_FAILURE);     \
+}
+
+#define FIND_MESH_FILE_TAG(LINE,STR)               \
+    if(LINE.find(STR) == std::string::npos)        \
+    {                                              \
+        TETMESH_EXIT("Invalid mesh input:{}",STR); \
+    }
+
 
 class Logger
 {

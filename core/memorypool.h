@@ -74,15 +74,17 @@ public:
 
         // Check if there are any free items left in the current block.
         if (unallocateditems == 0) {
-            size_t block_size = sizeof(Block) + itemsperblock + itembytes;
+            size_t block_size = sizeof(Block) + itemsperblock * itembytes;
             // Allocate a new block of items, pointed to by the previous block.
             Block* newblock = (Block*)malloc(block_size);
             if (newblock == nullptr) {
-                std::cerr << "Error:Failed to allocate new block!" << std::endl;
+                Log_Error("Error:Failed to allocate new block!")
                 return nullptr;
             }
 
-            nowblock == newblock;
+            newblock->next = firstblock;
+            firstblock = newblock;
+            nowblock = newblock;
             nextitem = (FreeNode*)newblock->data;
             unallocateditems = itemsperblock;
         }
@@ -118,12 +120,12 @@ public:
         firstblock = nullptr;
         nowblock = nullptr;
         nextitem = nullptr;
-        deaditemsack = nullptr;
+        deaditemstack = nullptr;
         items = 0;
         unallocateditems = 0;
         pathblock = nullptr;
         pathitem = nullptr;
-        pathitemsleft = 0;
+        pathitemleft = 0;
     }
 
     //============================================================================//
@@ -161,53 +163,81 @@ public:
             return nullptr;
         }
 
-        if (pathitemsleft == 0) {
+        if (pathitemleft == 0) {
             pathblock = pathblock->next;
             if (pathblock == nullptr) {
                 pathitem = nullptr;
                 return nullptr;
             }
             pathitem = (FreeNode*)pathblock->data;
-            pathitemsleft = itemsperblock;
+            pathitemleft = itemsperblock;
         }
 
         void* current = pathitem;
         pathitem = (FreeNode*)((char*)pathitem + itembytes);
-        pathitemsleft--;
+        pathitemleft--;
 
         return current;
     }
+
+    T* operator[](int index) {
+        int blockIndex = index / static_cast<int>(itemsperblock);
+        int offset = index % static_cast<int>(itemsperblock);
+
+        Block* block = firstblock;
+        for (int i = 0;i < blockIndex && block != nullptr;i++) {
+            block = block->next;
+        }
+        if (block == nullptr) {
+            return nullptr;
+        }
+
+        char* base = block->data + offset * itembytes;
+        return reinterpret_cast<T*>(base);
+    }
+
+    long GetItemUsed() const { return items; }
+    size_t GetItemPerBlock() const { return itemsperblock; }
 };
 
-template<typename T, typename... Args>
+template<typename T>
 class ObjectPool {
 private:
-    SimpleMemoryPool pool;
+    SimpleMemoryPool<T> pool;
 public:
     ObjectPool(size_t itemsperblock = 1024)
         :pool(sizeof(T), itemsperblock) {
     }
 
     // allocate and construct(placement new)
-    template<typename... Args>
-    T* construct(Args&&... args) {
-        static_assert(sizeof(T) <= itembytes,
-            "Type size exceeds pool item size");
-
-        T* obj = (T*)alloc();
+    template<typename... CtorArgs>
+    T* construct(CtorArgs&&... args) {
+        void* mem = pool.alloc();
+        T* obj = reinterpret_cast<T*>(mem);
         if (obj != nullptr) {
-            new (obj) T(std::forward<Args>(args)...);
+            new (obj) T(std::forward<CtorArgs>(args)...);
         }
         return obj;
     }
 
     // dallocate and deconstruct
-    template<typename T>
     void destroy(T* item) {
         if (item == nullptr) return;
 
         item->~T();
 
-        dealloc(item);
+        pool.dealloc(item);
+    }
+
+    T* operator[](const int index) {
+        return pool[index];
+    }
+
+    long GetItemUsed() const {
+        return pool.GetItemUsed();
+    }
+
+    size_t GetItemPerBlock() const {
+        return pool.GetItemPerBlock();
     }
 };
